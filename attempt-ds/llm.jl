@@ -45,12 +45,12 @@ function (sa::SelfAttention)(x)
     q = sa.q(x)  # (head_dim, seq_len, batch_size)
     k = sa.k(x)  # (head_dim, seq_len, batch_size)
     v = sa.v(x)  # (head_dim, seq_len, batch_size)
-    
+
     # Scaled dot-product attention
     scores = batched_mul(permutedims(q, (2,1,3)), k) ./ sqrt(size(q, 1))  # (seq_len, seq_len, batch_size)
     attn = softmax(scores; dims=1)
     out = batched_mul(v, attn)  # (head_dim, seq_len, batch_size)
-    
+
     sa.output(out)
 end
 
@@ -88,15 +88,15 @@ struct SimpleLLM
     head::Dense
 end
 
-function SimpleLLM(vocab_size=VOCAB_SIZE, embed_dim=EMBEDDING_DIM, hidden_dim=HIDDEN_DIM, 
+function SimpleLLM(vocab_size=VOCAB_SIZE, embed_dim=EMBEDDING_DIM, hidden_dim=HIDDEN_DIM,
                   context_length=CONTEXT_LENGTH, n_layers=4)
     # Positional embeddings (simple learned embeddings)
     pos_embed = Dense(context_length => embed_dim, bias=false)
-    
+
     # Transformer blocks
-    blocks = Chain([TransformerBlock(embed_dim, embed_dim ÷ 2, hidden_dim) 
+    blocks = Chain([TransformerBlock(embed_dim, embed_dim ÷ 2, hidden_dim)
                    for _ in 1:n_layers]...)
-    
+
     SimpleLLM(
         TokenEmbedding(vocab_size, embed_dim),
         pos_embed,
@@ -110,23 +110,23 @@ Flux.@functor SimpleLLM
 
 function (m::SimpleLLM)(tokens)
     # tokens should be (sequence_length, batch_size) matrix of token indices
-    
+
     # Create position indices
     seq_len, batch_size = size(tokens)
     pos_indices = collect(1:seq_len) .* ones(batch_size)'
-    
+
     # Get token and position embeddings
     tok_emb = m.token_embed(onehotbatch(tokens, 1:VOCAB_SIZE))  # (embed_dim, seq_len, batch_size)
     pos_emb = m.pos_embed(onehotbatch(pos_indices, 1:CONTEXT_LENGTH))
-    
+
     # Combine embeddings and pass through transformer
     x = tok_emb + pos_emb
     x = m.blocks(x)
     x = m.ln_f(x)
-    
+
     # Prediction head
     logits = m.head(x)  # (vocab_size, seq_len, batch_size)
-    
+
     return logits
 end
 
@@ -142,20 +142,20 @@ end
 function train!(model, data; epochs=10, lr=3e-4)
     opt = Adam(lr)
     ps = Flux.params(model)
-    
+
     for epoch in 1:epochs
         # Get batch
         x, y = get_batch(data, BATCH_SIZE, CONTEXT_LENGTH)
-        
+
         # Forward pass and loss calculation
         loss, grads = Flux.withgradient(ps) do
             logits = model(x)
             logitcrossentropy(logits, onehotbatch(y, 1:VOCAB_SIZE))
         end
-        
+
         # Update parameters
         Flux.update!(opt, ps, grads)
-        
+
         if epoch % 10 == 0
             println("Epoch $epoch, Loss: $(loss)")
         end
@@ -166,13 +166,13 @@ end
 function main()
     # Create model
     model = SimpleLLM(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM, CONTEXT_LENGTH)
-    
+
     # Generate random training data (in practice, you'd use real text)
     data = rand(1:VOCAB_SIZE, 10000)
-    
+
     # Train the model
     train!(model, data, epochs=100)
-    
+
     # Generate some text
     function generate(model, start_tokens, length=50)
         tokens = copy(start_tokens)
@@ -184,11 +184,11 @@ function main()
         end
         return tokens
     end
-    
+
     start_tokens = rand(1:VOCAB_SIZE, 5)
     generated = generate(model, start_tokens)
     println("Generated sequence: ", generated)
 end
 
 # Uncomment to run
-# main()
+main()
